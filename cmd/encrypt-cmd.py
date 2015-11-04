@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 import sys, stat, time, math
 
-from bup import options
+from bup import options, git
 from bup.helpers import *
 
 from shutil import copyfile
@@ -10,6 +10,29 @@ from filecmp import cmp
 from hashlib import md5
 from Crypto.Cipher import AES
 from Crypto import Random
+#
+# FIXME
+#   create deleted directory at server!!
+#     orphans + modified
+#   push to separate remotes (not only default)
+#   enable ssh
+#   push, pull separate files
+#   cross files checksum
+######
+#   after password change, bup --repair must bu run
+
+optspec = """
+bup encrypt [-pcfd --repair] [-k key] [-d decrypt-dir] [-e encrypt-dir]
+--
+e,encrypt=      path to remote dir
+d,decrypt=      path to local dir
+k,key=          encryption key
+p,push          push to remote directory
+c,check         check remote backup
+f,full          deep check remote backup (takes long time)
+repair          repair remote (takes long time)
+"""
+
 
 
 ###########################################################
@@ -40,8 +63,8 @@ def _sync_dirs ( _dir, _dest ):
 # hash_name  hash-list name for multiple remotes
 #
 def _get_diff ( _dir, _dest, hash_name="default" ):
-    print "Calculate diff"
-    hash_list="hash/"+hash_name+".sha1"
+    print "Calculating diff"
+    hash_list="encrypt/"+hash_name+".sha1"
     filename =  _dir+"/"+hash_list
     dirname  = os.path.dirname ( filename )
     if not os.path.exists ( dirname ):
@@ -60,7 +83,7 @@ def _get_diff ( _dir, _dest, hash_name="default" ):
 # find changes in repository
     list_file = [row[1] for row in hash_list]
     for path, dirs, files in os.walk( _dir ):
-        if path == (_dir+"/hash").replace("//","/"):
+        if path == (_dir+"/encrypt").replace("//","/"):
             continue
         for f in files:
             file_path   = ( path + "/" + f ).replace ( "//", "/" )
@@ -109,7 +132,7 @@ def _get_diff ( _dir, _dest, hash_name="default" ):
 def _send_remote ( _dir, _dest, push_list, key, hash_name="default" ):
     print "Pushing to", _dest,
 # create new hash-file, backup old one
-    hash_list = "hash/"+hash_name+".sha1"
+    hash_list = "encrypt/"+hash_name+".sha1"
     filename = _dir + "/" + hash_list
     if os.path.exists ( filename ):
         copyfile ( filename, filename+".old" )
@@ -148,9 +171,49 @@ def _clean_remote (_dest, orphan ):
     for fname in orphan:
         print "\r(" + str ( orphan.index ( fname ) + 1 ) + \
                 "/" + str ( total ) + ")", fname,
+# TODO
         os.remove ( fname )
     print "\r[OK]"
     return 0
+
+###########################################################
+# Push and encrypt backup
+# _dir       local backup
+# _dest      remote encrypted dir
+# puch_list  list of files to be pushed 
+# key        encryption key 32 characters
+# hash_name  hash-list name for multiple remotes
+#
+def _push_remote ( _dir, _dest, key ):
+    index = 0
+    while True:
+        index += 1
+        _break = True
+        if _sync_dirs    ( _dir, _dest ):
+            print "\n[failed] Sync dirs failed."
+            exit ( 1 )
+
+        push_list,orphan = \
+        _get_diff     ( _dir, _dest )
+        if filter(lambda a: a != '', [row[2] for row in push_list] ):
+            _break = False
+
+        if _send_remote  ( _dir, _dest, push_list , key ):
+            print "\n[failed] Send to remote failed."
+            exit ( 1 )
+
+        if _clean_remote ( _dest, orphan ):
+            print "\n[failed] Clean remote failed."
+            exit ( 1 )
+
+        if _check_backup ( _dir, _dest ):
+            _break = False
+
+        if _break:
+            return 0
+# sth. is wrong
+        if index > 16:
+            return 1
 
 ###########################################################
 # Check if all local files are on remote
@@ -158,7 +221,7 @@ def _clean_remote (_dest, orphan ):
 # _dest      remote encrypted backup
 #
 def _check_backup ( _dir, _dest ):
-    print "Check backup"
+    print "Checking backup"
     total = 0
     index = 0
     for path, dirs, files in os.walk( _dir ):
@@ -166,7 +229,7 @@ def _check_backup ( _dir, _dest ):
 
     orphan = []
     for path, dirs, files in os.walk( _dir ):
-        if path == (_dir+"/hash").replace("//","/"):
+        if path == (_dir+"/encrypt").replace("//","/"):
             continue
         for f in files:
             print "\r(" + str ( index + 1 ) + "/" + \
@@ -191,14 +254,14 @@ def _check_backup ( _dir, _dest ):
 # key        encryption key 32 characters
 #
 def _full_check_backup ( _dir, _dest, key ):
-    print "Full check backup "+_dest
+    print "Checking  backup deeply "+_dest
     total = 0
     index = 0
     for path, dirs, files in os.walk( _dest ):
         total += len ( files )
 
     errors = []
-    temp_file = _dir + "/hash/tmp"
+    temp_file = _dir + "/encrypt/tmp"
     for path, dirs, files in os.walk( _dest ):
         for f in files:
             print "\r(" + str ( index + 1 ) + "/" + \
@@ -237,10 +300,12 @@ def _full_repair_backup ( _dir, _dest, key , errors):
         print "\r(" + str ( errors.index ( f ) + 1 ) + "/" + \
                 str ( total ) + ") " + \
                 f.replace ( _dest, "./" ),
+# TODO
         os.remove ( f.replace ( _dir, _dest ) )
     print "\r[OK]"
     if not total == 0:
-        _push_remote ( _dir, _dest, key )
+        if _push_remote ( _dir, _dest, key ):
+            print "\n[failed] Push failed."
 
 ###########################################################
 # Decrypt remote and save it in local
@@ -249,7 +314,7 @@ def _full_repair_backup ( _dir, _dest, key , errors):
 # key        encryption key 32 characters
 #
 def _pull_remote ( _dir, _dest, key ):
-    print "Recovery from "+_dest
+    print "Recovering from "+_dest
     total = 0
     index = 0
     for path, dirs, files in os.walk( _dest ):
@@ -269,6 +334,7 @@ def _pull_remote ( _dir, _dest, key ):
             in_file.close()
             out_file.close()
     print "\r[OK]"
+    return 0
 
 ###########################################################
 # Check if encryption key is set
@@ -278,13 +344,15 @@ def _check_encryption_key ():
         global KEY
         KEY 
     except NameError:
-        keyfilename = BUP_DIR + "hash/.key"
+        keyfilename = BUP_DIR + "encrypt/.key"
         if not os.path.exists ( keyfilename ):
             dirname  = os.path.dirname ( keyfilename )
             if not os.path.exists ( dirname ):
                 os.makedirs ( dirname ) 
             print "Generating key in "+keyfilename
-            os.system ( "dd if=/dev/urandom of=" + keyfilename + " bs=1 count=32" )
+            cmd = "dd if=/dev/urandom of=" + keyfilename + " bs=1 count=32"
+            print "Key gen command:", cmd
+            os.system ( cmd + ">/dev/null 2>&1" )
         keyfile = open ( keyfilename, "r" )
         KEY = keyfile.read(32)
         keyfile.close()
@@ -298,57 +366,38 @@ def _check_encrypted_dir ():
         global ENCRYPT_DIR
         ENCRYPT_DIR
     except NameError:
-        encfilename = BUP_DIR + "hash/.encryptdir"
+        encfilename = BUP_DIR + "encrypt/.encryptdir"
         if not os.path.exists ( encfilename ):
             dirname  = os.path.dirname ( encfilename )
             if not os.path.exists ( dirname ):
                 os.makedirs ( dirname )
-            print "Missing file ./hash/encryptdir or -e parameter."
+            print "Missing file ./encrypt/.encryptdir or -e parameter."
             exit ( 1 )
         encfile = open ( encfilename, "r" )
-        encdir = encfile.readline().strip()
+        ENCRYPT_DIR = encfile.readline().strip()
         encfile.close()
-        ENCRYPT_DIR = (encdir+"/").replace("//","/");
-        print "Using ecription dir\t", ENCRYPT_DIR
-
+    ENCRYPT_DIR = (ENCRYPT_DIR+"/").replace("//","/");
+    if not os.path.exists ( ENCRYPT_DIR ):
+        print "Encrypt path does not exist:",ENCRYPT_DIR
+        exit ( 1 )
+    print "Using ecrypted dir\t", ENCRYPT_DIR
 
 ###########################################################
-# Push and encrypt backup
-# _dir       local backup
-# _dest      remote encrypted dir
-# puch_list  list of files to be pushed 
-# key        encryption key 32 characters
-# hash_name  hash-list name for multiple remotes
+# Check decrypted dir is set
 #
-def _push_remote ( _dir, _dest, key ):
-    index = 0
-    while True:
-        index += 1
-        _break = True
-        if _sync_dirs    ( _dir, _dest ):
-            print "\n[failed] Push failed."
-            exit ( 1 )
+def _check_decrypted_dir ():
+    try:
+        global ENCRYPT_DIR
+        ENCRYPT_DIR
+    except NameError:
+        print "Missing-d parameter."
+        exit ( 1 )
 
-        push_list,orphan = \
-        _get_diff     ( _dir, _dest )
-        if len ( filter(lambda a: a != '', [row[2] for row in push_list] ) ) > 0:
-            _break = False
-
-        if _send_remote  ( _dir, _dest, push_list , key ):
-            print "\n[failed] Push failed."
-            exit ( 1 )
-
-        if _clean_remote ( _dest, orphan ):
-            print "\n[failed] Push failed."
-            exit ( 1 )
-
-        if _check_backup ( _dir, _dest ):
-            _break = False
-
-        if _break:
-            return 0
-        if index > 16:
-            return 1
+    DECRYPT_DIR = (DECRYPT_DIR+"/").replace("//","/");
+    if not os.path.exists ( DECRYPT_DIR ):
+        print "Decrypt path does not exist:",DECRYPT_DIR
+        exit ( 1 )
+    print "Using deription dir\t", DECRYPT_DIR
 
 ###########################################################
 # help functions for necryption 
@@ -404,58 +453,38 @@ def _get_hash ( filepath ):
 ###########################################################
 # main code
 ###########################################################
-#
-# full check -> repair push
-# push separate files
-
-optspec = """
-bup encrypt [-pcfd --repair] [-k key] [-d decrypt-dir] [-e encrypt-dir]
---
-e,encrypt=      path to remote dir
-d,decrypt=      path to local dir
-k,key=          encryption key
-p,push          push to remote directory
-c,check         check remote backup
-f,full          full check remote backup (takes long time)
-repair          repair remote (takes long time)
-"""
 
 o = options.Options(optspec)
 (opt, flags, extra) = o.parse(sys.argv[1:])
 
-#print opt
-#print flags
-#print extra
-#print "###############################"
-
-
 BUP_DIR = os.environ['BUP_DIR']
-DECRYPT_DIR=""
+BUP_DIR = (BUP_DIR+"/").replace("//","/");
 
+git.check_repo_or_die()
+
+# load options
 for (option, parameter) in flags:
-    if option == "-e" or option == "--encrypt":
+    if   option == "-e" or option == "--encrypt":
         ENCRYPT_DIR = parameter
     elif option == "-k" or option == "--key":
         KEY = parameter
     elif option == "-d" or option == "--decrypt":
         DECRYPT_DIR = parameter
-        if DECRYPT_DIR == "":
-            print "\n[failed] Missing decrypt directory."
-            exit ( 1 )
 
-
-BUP_DIR  = (BUP_DIR+"/").replace("//","/");
-DECRYPT_DIR = (DECRYPT_DIR+"/").replace("//","/");
-
+# commands
 # push
 if opt.push:
     _check_encryption_key ()
     _check_encrypted_dir ()
 
     if _push_remote ( BUP_DIR, ENCRYPT_DIR, KEY ):
-        print "\nPush successfull."
+        print "\n[failed] Push failed."
+        exit ( 1 )
+
+    print "\nPush successfull."
+
 # check
-elif     opt.check:
+elif opt.check:
     _check_encrypted_dir ()
     push_list,orphan = \
     _get_diff     ( BUP_DIR, ENCRYPT_DIR )
@@ -469,6 +498,7 @@ elif     opt.check:
         exit ( 1 )
 
     print "\nRemote is synchonized."
+
 # full check
 elif opt.full:
     _check_encryption_key ()
@@ -492,22 +522,31 @@ elif opt.full:
         exit ( 1 )
 
     print "\nRemote is fully synchonized."
+
 # pull
 elif opt.decrypt:
     _check_encryption_key ()
     _check_encrypted_dir ()
+    _check_decrypted_dir ()
     if _sync_dirs ( ENCRYPT_DIR, DECRYPT_DIR ):
-        print "\n[failed]Sync dirs failed."
+        print "\n[failed] Sync dirs failed."
         exit ( 1 )
-    _pull_remote ( DECRYPT_DIR, ENCRYPT_DIR, KEY )
+    if _pull_remote ( DECRYPT_DIR, ENCRYPT_DIR, KEY ):
+        print "\n[failed] Pull failed."
+
     print "\nRepository decrypted."
+
 # repair
 elif opt.repair:
     _check_encryption_key ()
     _check_encrypted_dir ()
-    _push_remote ( BUP_DIR, ENCRYPT_DIR, KEY )
+    if _push_remote ( BUP_DIR, ENCRYPT_DIR, KEY ):
+        print "\n[failed] Push failed."
+        exit ( 1 )
     errors = _full_check_backup ( BUP_DIR, ENCRYPT_DIR, KEY )
     _full_repair_backup ( BUP_DIR, ENCRYPT_DIR, KEY, errors )
+
+# no command
 else:
-    o.fatal ( "use one of -d, -p, -c, -f, --repair" )
+    o.fatal ( "use one of -p, -c, -f, -d, --repair" )
 
