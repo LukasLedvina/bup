@@ -4,8 +4,10 @@ import sys, stat, time, math
 from bup import options, git
 from bup.helpers import *
 
-from shutil import copyfile
+from shutil import copyfile, move
 from filecmp import cmp
+
+import datetime, time
 
 from hashlib import md5
 from Crypto.Cipher import AES
@@ -29,7 +31,7 @@ d,decrypt=      path to local dir
 k,key=          encryption key
 p,push          push to remote directory
 c,check         check remote backup
-f,full          deep check remote backup (takes long time)
+f,full          full deep check remote backup (takes long time)
 repair          repair remote (takes long time)
 """
 
@@ -48,6 +50,8 @@ def _sync_dirs ( _dir, _dest ):
     print "Synchonizing dirs\t",
     cmd='rsync -qa -f"+ */" -f"- *" '+_dir+" "+_dest
     ret = os.system(cmd)
+    cmd='rsync -qa -f"+ */" -f"- *" '+_dir+" "+_dest+"/deleted"
+    ret += os.system(cmd)
     if ret == 0:
         print "[OK]"
     else:
@@ -112,6 +116,8 @@ def _get_diff ( _dir, _dest, hash_name="default" ):
     orphan = []
     for path, dirs, files in os.walk( _dest ):
         for f in files:
+            if path.find ( ( _dest+"/deleted").replace("//","/") ) != -1:
+                continue
             filename = (path+"/"+f).replace ( _dest, _dir )
             if not os.path.isfile ( filename ):
                 orphan.append ( path+"/"+f )
@@ -151,6 +157,10 @@ def _send_remote ( _dir, _dest, push_list, key, hash_name="default" ):
     for in_filename in push_files:
         print "\r("+str(push_files.index ( in_filename )+1)+"/"+str(total)+")",in_filename,
         out_filename = in_filename.replace (_dir, _dest )
+        if os.path.exists ( out_filename ):
+            newfile = out_filename.replace ( _dest, _dest+"deleted/" )
+            newfile += "." + datetime.datetime.now().strftime('%Y%m%d-%H%M%S')
+            move ( out_filename, newfile )
         in_file  = open(in_filename, 'rb') 
         out_file = open(out_filename, 'wb')
         encrypt ( in_file, out_file, KEY )
@@ -171,8 +181,9 @@ def _clean_remote (_dest, orphan ):
     for fname in orphan:
         print "\r(" + str ( orphan.index ( fname ) + 1 ) + \
                 "/" + str ( total ) + ")", fname,
-# TODO
-        os.remove ( fname )
+        newfile = fname.replace ( _dest, _dest+"deleted/" )
+        newfile += "." + datetime.datetime.now().strftime('%Y%m%d-%H%M%S')
+        move ( fname, newfile )
     print "\r[OK]"
     return 0
 
@@ -264,6 +275,8 @@ def _full_check_backup ( _dir, _dest, key ):
     temp_file = _dir + "/encrypt/tmp"
     for path, dirs, files in os.walk( _dest ):
         for f in files:
+            if path.find ( ( _dest+"/deleted").replace("//","/") ) != -1:
+                continue
             print "\r(" + str ( index + 1 ) + "/" + \
                     str ( total ) + ") " + \
                     ( path + "/" + f ).replace ( _dest, "./" ),
@@ -300,8 +313,10 @@ def _full_repair_backup ( _dir, _dest, key , errors):
         print "\r(" + str ( errors.index ( f ) + 1 ) + "/" + \
                 str ( total ) + ") " + \
                 f.replace ( _dest, "./" ),
-# TODO
-        os.remove ( f.replace ( _dir, _dest ) )
+        fname   = f.replace ( _dir, _dest )
+        newfile = fname.replace ( _dest, _dest+"deleted/" )
+        newfile += "." + datetime.datetime.now().strftime('%Y%m%d-%H%M%S')
+        move ( fname, newfile )
     print "\r[OK]"
     if not total == 0:
         if _push_remote ( _dir, _dest, key ):
