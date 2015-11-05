@@ -19,9 +19,6 @@ from Crypto import Random
 #   push to separate remotes (not only default)
 #   enable ssh
 #   cross files checksum
-######
-#   after password change, bup --repair must bu run
-#   check password change
 #
 
 optspec = """
@@ -47,7 +44,7 @@ def _sync_dirs(_dir, _dest):
     _dir   local backup
     _dest  remote encrypted backup
     """
-    print "Synchonizing dirs\t",
+    print "Synchonizing dirs"
     cmd = 'rsync -qa -f"+ */" -f"- *" '+_dir+" "+_dest
     ret1 = os.system(cmd)
     cmd = 'rsync -qa -f"+ */" -f"- *" '+_dir+" "+_dest+"/deleted"
@@ -258,13 +255,14 @@ def _check_backup(_dir,_dest):
         return 0
     return 1
 
-def _full_check_backup(_dir, _dest, key):
+def _full_check_backup(_dir, _dest, key, one_file=False):
     """Decrypt remote and compare with local
     _dir       local backup
     _dest      remote encrypted dir
     key        encryption key 32 characters
     """
-    print "Checking  backup deeply "+_dest
+    if not one_file:
+        print "Checking  backup deeply "+_dest
     errors = []
     temp_file = _dir + "/encrypt/tmp"
     list_files = _get_remote_file_list(_dest)
@@ -281,6 +279,8 @@ def _full_check_backup(_dir, _dest, key):
         loc_file_name = file_name.replace(_dest,_dir)
         match = cmp(temp_file, loc_file_name)
         os.remove(temp_file)
+        if one_file:
+            return match
         if not match:
             errors.append(loc_file_name)
             print "\r  [not match]",loc_file_name.replace(_dir, "./")
@@ -290,15 +290,14 @@ def _full_check_backup(_dir, _dest, key):
         print "\r[OK]"
     return errors
 
-###########################################################
-# Repair remote backup
-# _dir       local backup
-# _dest      remote encrypted dir
-# key        encryption key 32 characters
-#
 def _full_repair_backup(_dir, _dest, key , errors):
-    total = len(errors)
+    """Repair remote backup
+    _dir       local backup
+    _dest      remote encrypted dir
+    key        encryption key 32 characters
+    """
     print "Full repair backup "+_dest,
+    total = len(errors)
     print "\t",total,"files to repair"
     for f in errors:
         print "\r(" + str(errors.index(f) + 1) + "/" + \
@@ -313,6 +312,9 @@ def _full_repair_backup(_dir, _dest, key , errors):
         if _push_remote(_dir, _dest, key):
             print "\n[failed] Push failed."
             return 1
+    if len(_full_check_backup(_dir, _dest, key)):
+        print "\n[failed] Deep check failed."
+        return 1
     return 0
 
 def _pull_remote(_dir, _dest, key):
@@ -448,6 +450,18 @@ def _check_decrypted_dir():
         exit(1)
     print "Using decription dir\t", DECRYPT_DIR
 
+def _check_key_changed(_dir, _dest, key):
+    """Check if is not changed from last backup
+    _dir       local dir for decryption
+    _dest      remote encrypted dir
+    key        encryption key 32 characters
+    """
+    print "Checking encryption key"
+    if not _full_check_backup(_dir, _dest, key, one_file=True):
+        print "\n[failed] Key changed! Run `bup encrypt --repair`."
+        exit(1)
+    print "\r[OK]"
+
 ###########################################################
 # help functions for necryption 
 # http://stackoverflow.com/questions/16761458/how-to-aes-encrypt-decrypt-files-using-python-pycrypto-in-an-openssl-compatible
@@ -525,6 +539,7 @@ for (option, parameter) in flags:
 if opt.push:
     _check_encryption_key()
     _check_encrypted_dir()
+    _check_key_changed(BUP_DIR, ENCRYPT_DIR, KEY)
 
     if _push_remote(BUP_DIR, ENCRYPT_DIR, KEY, opt.full):
         print "\n[failed] Push failed."
@@ -534,7 +549,9 @@ if opt.push:
 
 # check
 elif opt.check and not opt.full:
+    _check_encryption_key()
     _check_encrypted_dir()
+    _check_key_changed(BUP_DIR, ENCRYPT_DIR, KEY)
 
     push_list,orphan = _get_diff(BUP_DIR, ENCRYPT_DIR)
     check_backup = _check_backup(BUP_DIR, ENCRYPT_DIR)
@@ -549,6 +566,7 @@ elif opt.check and not opt.full:
 elif opt.check and opt.full:
     _check_encryption_key()
     _check_encrypted_dir()
+    _check_key_changed(BUP_DIR, ENCRYPT_DIR, KEY)
 
     if _sync_dirs(BUP_DIR, ENCRYPT_DIR):
         print "\n[failed] Sync dirs failed."
@@ -594,8 +612,9 @@ elif opt.repair:
     errors = _full_check_backup(BUP_DIR, ENCRYPT_DIR, KEY)
     if _full_repair_backup(BUP_DIR, ENCRYPT_DIR, KEY, errors):
         print "\n[failed] Repair failed"
+        exit(1)
 
-    print "\n Remote repository repaired."
+    print "\nRemote repository repaired."
 
 # no command
 else:
