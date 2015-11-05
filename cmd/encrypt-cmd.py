@@ -236,6 +236,8 @@ def _check_backup ( _dir, _dest ):
     total = 0
     index = 0
     for path, dirs, files in os.walk( _dir ):
+        if path == (_dir+"/encrypt").replace("//","/"):
+            continue
         total += len ( files )
 
     orphan = []
@@ -269,6 +271,8 @@ def _full_check_backup ( _dir, _dest, key ):
     total = 0
     index = 0
     for path, dirs, files in os.walk( _dest ):
+        if path.find ( ( _dest+"/deleted").replace("//","/") ) != -1:
+            continue
         total += len ( files )
 
     errors = []
