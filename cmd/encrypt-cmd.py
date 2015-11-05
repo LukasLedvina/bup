@@ -14,14 +14,13 @@ from Crypto.Cipher import AES
 from Crypto import Random
 #
 # FIXME
-#   create deleted directory at server!!
-#     orphans + modified
 #   push to separate remotes (not only default)
 #   enable ssh
 #   push, pull separate files
 #   cross files checksum
 ######
 #   after password change, bup --repair must bu run
+#   check password change
 
 optspec = """
 bup encrypt [-pcfd --repair] [-k key] [-d decrypt-dir] [-e encrypt-dir]
