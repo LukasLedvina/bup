@@ -30,18 +30,15 @@ bup encrypt [-pcd --repair] [-k key] [-d decrypt-dir] [-e encrypt-dir] <files ..
 e,encrypt=      path to remote dir
 d,decrypt=      path to local dir
 k,key=          encryption key
-nokey           without encryption
 p,push          push to remote directory
 c,check         check remote backup
-f,full          check content (takes long time)
-repair          repair remote (takes long time)
+f,full          check content instead of modified  (takes a long time)
+repair          repair remote (takes a long time)
 """
 
-###########################################################
-# important functions
-###########################################################
+#nokey           without encryption (not implemented
 
-def _sync_dirs ( _dir, _dest ):
+def _sync_dirs(_dir, _dest):
     """Synchronize directory structure from local to remote dir.
     It should be run before any writing to remote dir.
     Using rsync. 
@@ -58,17 +55,10 @@ def _sync_dirs ( _dir, _dest ):
     if ret1 == 0 and ret2 == 0:
         print "[OK]"
     else:
-        print "[failed] "+str ( ret )
+        print "[failed] " + str(ret)
         exit(1)
     return 0
 
-###########################################################
-# Compares hashes in local backup with local hash-list
-# prepare list of files to push
-# _dir       local backup
-# _dest      remote encrypted backup
-# hash_name  hash-list name for multiple remotes
-#
 def _get_diff(
         _dir,
         _dest, 
@@ -92,20 +82,18 @@ def _get_diff(
     hash_list = []
     push_list = []
 # load old hash list
-    if  os.path.exists ( filename ):
-        hash_file = open ( filename, 'r' )
+    if  os.path.exists(filename):
+        hash_file = open(filename, 'r')
         for line in hash_file:
             fhash, fmodified, fname = line.strip().split(" ", 2)
             hash_list.append([fhash.strip(), fmodified.strip(), fname.strip()])
         hash_file.close()
-        #print "HL=",hash_list
-#        print "HL=",hash_list
 
 # find changes in repository
     list_files = _get_local_file_list(_dir)
     hash_list_files = [row[2] for row in hash_list]
     for file_path in list_files:
-        file_path_r = file_path.replace( _dir, "./").replace("//", "/")
+        file_path_r = file_path.replace(_dir, "./").replace("//", "/")
         file_hash = "0"
         file_modified = int(float(os.path.getmtime(file_path)))
         if cmp_hash:
@@ -113,7 +101,7 @@ def _get_diff(
         print "\r"+file_path_r,
         try:
             index = hash_list_files.index(file_path_r)
-            if (cmp_hash and hash_list[index][0] == file_hash) \
+            if (cmp_hash and hash_list[index][0] == file_hash)\
                or ( (not cmp_hash) and int(hash_list[index][1]) >= int(file_modified)):
                 if os.path.exists(file_path.replace(_dir, _dest)):
                     file_hash = hash_list[index][0]
@@ -159,9 +147,9 @@ def _send_remote(_dir, _dest, push_list, key, hash_name="default"):
 # create new hash-file, backup old one
     hash_list = "encrypt/"+hash_name+".sha1"
     filename = _dir + "/" + hash_list
-    if os.path.exists ( filename ):
-        copyfile ( filename, filename+".old" )
-    hash_file = open ( filename, 'w' )
+    if os.path.exists(filename):
+        copyfile(filename, filename+".old")
+    hash_file = open(filename, 'w')
 # prepare list of files to push
     push_files = []
     for file_hash, file_modified, file_path_r, file_path in push_list:
@@ -170,21 +158,21 @@ def _send_remote(_dir, _dest, push_list, key, hash_name="default"):
                 file_path_r + "\n")
         if not file_path == "":
             push_files.append(file_path)
-    hash_file.close ()
+    hash_file.close()
 
-    total = len ( push_files )
+    total = len(push_files)
     print "\t",total,"files to push"
 # encrypt and push
     for in_filename in push_files:
         print "\r(" + str(push_files.index(in_filename) + 1) + \
               "/" + str(total) + ")", in_filename,
-        out_filename = in_filename.replace (_dir, _dest )
+        out_filename = in_filename.replace(_dir, _dest)
         # backup remote file instead of delete
         if os.path.exists(out_filename):
             newfile = out_filename.replace(_dest, _dest+"deleted/")
             newfile += "." + datetime.datetime.now().strftime('%Y%m%d-%H%M%S')
             move(out_filename, newfile)
-        in_file  = open(in_filename, 'rb') 
+        in_file  = open(in_filename, 'rb')
         out_file = open(out_filename, 'wb')
         encrypt(in_file, out_file, KEY)
         in_file.close()
@@ -205,11 +193,11 @@ def _clean_remote(_dest, orphan):
                 "/" + str(total) + ")", fname,
         newfile = fname.replace(_dest, _dest+"deleted/")
         newfile += "." + datetime.datetime.now().strftime('%Y%m%d-%H%M%S')
-        move ( fname, newfile )
+        move(fname, newfile)
     print "\r[OK]"
     return 0
 
-def _push_remote ( _dir, _dest, key, cmp_hash=False):
+def _push_remote(_dir, _dest, key, cmp_hash=False):
     """Push and encrypt backup
     _dir       local backup
     _dest      remote encrypted dir
@@ -222,22 +210,22 @@ def _push_remote ( _dir, _dest, key, cmp_hash=False):
     while True:
         index += 1
         _break = True
-        if _sync_dirs    ( _dir, _dest ):
+        if _sync_dirs(_dir, _dest):
             print "\n[failed] Sync dirs failed."
-            exit ( 1 )
+            exit(1)
 
         push_list,orphan = \
         _get_diff(_dir, _dest, cmp_hash)
-        if filter(lambda a: a != '', [row[3] for row in push_list] ):
+        if filter(lambda a: a != '', [row[3] for row in push_list]):
             _break = False
 
         if _send_remote(_dir, _dest, push_list , key):
             print "\n[failed] Send to remote failed."
-            exit ( 1 )
+            exit(1)
 
         if _clean_remote(_dest, orphan):
             print "\n[failed] Clean remote failed."
-            exit ( 1 )
+            exit(1)
 
         if _check_backup(_dir, _dest):
             _break = False
@@ -248,7 +236,7 @@ def _push_remote ( _dir, _dest, key, cmp_hash=False):
         if index > 16:
             return 1
 
-def _check_backup (_dir,_dest):
+def _check_backup(_dir,_dest):
     """Check if all local files are on remote
     _dir       local backup
     _dest      remote encrypted backup
@@ -258,19 +246,19 @@ def _check_backup (_dir,_dest):
     list_files = _get_local_file_list(_dir)
     total = len(list_files)
     for file_name in list_files:
-        print "\r(" + str ( list_files.index(file_name) + 1 ) + "/" + \
+        print "\r(" + str(list_files.index(file_name) + 1) + "/" + \
                 str(total) + ") " + \
                 file_name.replace(_dest, "./"),
         dest_file_name = file_name.replace(_dir, _dest)
         if not os.path.isfile(dest_file_name):
             orphan.append(file_name)
-            print "\r  [not send]", fname.replace(_dir, "./")
+            print "\r  [not send]", file_name.replace(_dir, ".")
     print "\r[OK]"
     if len(orphan) == 0:
         return 0
     return 1
 
-def _full_check_backup ( _dir, _dest, key ):
+def _full_check_backup(_dir, _dest, key):
     """Decrypt remote and compare with local
     _dir       local backup
     _dest      remote encrypted dir
@@ -282,12 +270,12 @@ def _full_check_backup ( _dir, _dest, key ):
     list_files = _get_remote_file_list(_dest)
     total = len(list_files)
     for file_name in list_files:
-        print "\r(" + str(list_files.index(file_name) + 1 ) + "/" + \
+        print "\r(" + str(list_files.index(file_name) + 1) + "/" + \
                 str(total) + ") " + \
                 file_name.replace(_dest, "./"),
-        in_file  = open ( file_name , 'rb')
-        out_file = open ( temp_file, 'wb' )
-        decrypt ( in_file, out_file, KEY )
+        in_file  = open(file_name , 'rb')
+        out_file = open(temp_file, 'wb')
+        decrypt(in_file, out_file, KEY)
         in_file.close()
         out_file.close()
         loc_file_name = file_name.replace(_dest,_dir)
@@ -308,25 +296,25 @@ def _full_check_backup ( _dir, _dest, key ):
 # _dest      remote encrypted dir
 # key        encryption key 32 characters
 #
-def _full_repair_backup ( _dir, _dest, key , errors):
-    total = len ( errors )
+def _full_repair_backup(_dir, _dest, key , errors):
+    total = len(errors)
     print "Full repair backup "+_dest,
     print "\t",total,"files to repair"
     for f in errors:
-        print "\r(" + str ( errors.index ( f ) + 1 ) + "/" + \
-                str ( total ) + ") " + \
-                f.replace ( _dest, "./" ),
-        fname   = f.replace ( _dir, _dest )
-        newfile = fname.replace ( _dest, _dest+"deleted/" )
+        print "\r(" + str(errors.index(f) + 1) + "/" + \
+                str(total) + ") " + \
+                f.replace(_dest, "./"),
+        fname   = f.replace(_dir, _dest)
+        newfile = fname.replace(_dest, _dest+"deleted/")
         newfile += "." + datetime.datetime.now().strftime('%Y%m%d-%H%M%S')
-        move ( fname, newfile )
+        move(fname, newfile)
     print "\r[OK]"
     if not total == 0:
-        if _push_remote ( _dir, _dest, key ):
+        if _push_remote(_dir, _dest, key):
             print "\n[failed] Push failed."
+            return 1
+    return 0
 
-###########################################################
-#
 def _pull_remote(_dir, _dest, key):
     """Decrypt remote and save it in local
     _dir       local dir for decryption
@@ -341,10 +329,10 @@ def _pull_remote(_dir, _dest, key):
                 str(total) + ") " + \
                 file_name.replace(_dest, "./"),
         in_filename = file_name
-        out_filename = in_filename.replace ( _dest, _dir )
-        in_file  = open ( in_filename , 'rb')
-        out_file = open ( out_filename, 'wb' )
-        decrypt ( in_file, out_file, KEY )
+        out_filename = in_filename.replace(_dest, _dir)
+        in_file  = open(in_filename , 'rb')
+        out_file = open(out_filename, 'wb')
+        decrypt(in_file, out_file, KEY)
         in_file.close()
         out_file.close()
     print "\r[OK]"
@@ -395,68 +383,70 @@ def _get_local_file_list(_dir):
             _get_file_list(nullextra=_dir))
     return file_list
 
-###########################################################
-# Check if encryption key is set
-#
-def _check_encryption_key ():
+def _check_encryption_key():
+    """Check if encryption key is set
+    if not load from encript/.key
+    if is not exist generate it
+    """
     try:
         global KEY
         KEY 
     except NameError:
         keyfilename = BUP_DIR + "encrypt/.key"
-        if not os.path.exists ( keyfilename ):
-            dirname  = os.path.dirname ( keyfilename )
-            if not os.path.exists ( dirname ):
-                os.makedirs ( dirname ) 
+        if not os.path.exists(keyfilename):
+            dirname  = os.path.dirname(keyfilename)
+            if not os.path.exists(dirname):
+                os.makedirs(dirname) 
             print "Generating key in "+keyfilename
             cmd = "dd if=/dev/urandom of=" + keyfilename + " bs=1 count=32"
             print "Key gen command:", cmd
-            os.system ( cmd + ">/dev/null 2>&1" )
-        keyfile = open ( keyfilename, "r" )
+            os.system(cmd + ">/dev/null 2>&1")
+        keyfile = open(keyfilename, "r")
         KEY = keyfile.read(32)
         keyfile.close()
         print "Using key-file    \t", keyfilename
 
-###########################################################
-# Check encrypted dir is set
-#
-def _check_encrypted_dir ():
+def _check_encrypted_dir():
+    """Check if encrypted dir is set
+    If not set it from encrypt/.encryptdir .
+    Test if the dir exists.
+    """
     try:
         global ENCRYPT_DIR
         ENCRYPT_DIR
     except NameError:
         encfilename = BUP_DIR + "encrypt/.encryptdir"
-        if not os.path.exists ( encfilename ):
-            dirname  = os.path.dirname ( encfilename )
-            if not os.path.exists ( dirname ):
-                os.makedirs ( dirname )
+        if not os.path.exists(encfilename):
+            dirname  = os.path.dirname(encfilename)
+            if not os.path.exists(dirname):
+                os.makedirs(dirname)
             print "Missing file ./encrypt/.encryptdir or -e parameter."
-            exit ( 1 )
-        encfile = open ( encfilename, "r" )
+            exit(1)
+        encfile = open(encfilename, "r")
         ENCRYPT_DIR = encfile.readline().strip()
         encfile.close()
-    ENCRYPT_DIR = (ENCRYPT_DIR+"/").replace("//","/");
-    if not os.path.exists ( ENCRYPT_DIR ):
+    ENCRYPT_DIR = (ENCRYPT_DIR + "/").replace("//", "/");
+    if not os.path.exists(ENCRYPT_DIR):
         print "Encrypt path does not exist:",ENCRYPT_DIR
-        exit ( 1 )
+        exit(1)
     print "Using ecrypted dir\t", ENCRYPT_DIR
 
-###########################################################
-# Check decrypted dir is set
-#
-def _check_decrypted_dir ():
+def _check_decrypted_dir():
+    """Check if decryption dir is set.
+    Test if the dir exists.
+    """
     try:
-        global ENCRYPT_DIR
-        ENCRYPT_DIR
+        global DECRYPT_DIR
+        DECRYPT_DIR
     except NameError:
-        print "Missing-d parameter."
-        exit ( 1 )
+        print "Missing -d parameter."
+        exit(1)
 
     DECRYPT_DIR = (DECRYPT_DIR+"/").replace("//","/");
-    if not os.path.exists ( DECRYPT_DIR ):
+    if not os.path.exists(DECRYPT_DIR):
         print "Decrypt path does not exist:",DECRYPT_DIR
-        exit ( 1 )
-    print "Using deription dir\t", DECRYPT_DIR
+        exit(1)
+    print "Using decription dir\t", DECRYPT_DIR
 
 ###########################################################
 # help functions for necryption 
@@ -499,9 +489,9 @@ def decrypt(in_file, out_file, password, key_length=32):
             finished = True
         out_file.write(chunk)
 
-def _get_hash ( filepath ):
+def _get_hash(filepath):
     sha1 = hashlib.sha1()
-    f = open ( filepath, 'rb')
+    f = open(filepath, 'rb')
     try:
         sha1.update(f.read())
     finally:
@@ -533,79 +523,81 @@ for (option, parameter) in flags:
 # commands
 # push
 if opt.push:
-    _check_encryption_key ()
-    _check_encrypted_dir ()
+    _check_encryption_key()
+    _check_encrypted_dir()
 
-    if _push_remote ( BUP_DIR, ENCRYPT_DIR, KEY, opt.full):
+    if _push_remote(BUP_DIR, ENCRYPT_DIR, KEY, opt.full):
         print "\n[failed] Push failed."
-        exit ( 1 )
+        exit(1)
 
     print "\nPush successfull."
 
 # check
 elif opt.check and not opt.full:
-    _check_encrypted_dir ()
-    push_list,orphan = \
-    _get_diff     ( BUP_DIR, ENCRYPT_DIR )
+    _check_encrypted_dir()
 
-    check_backup = \
-    _check_backup ( BUP_DIR, ENCRYPT_DIR )
-
-    push_list = filter(lambda a: a != '', [row[3] for row in push_list] )
-    if len ( push_list ) > 0 or len ( orphan ) > 0 or check_backup:
+    push_list,orphan = _get_diff(BUP_DIR, ENCRYPT_DIR)
+    check_backup = _check_backup(BUP_DIR, ENCRYPT_DIR)
+    push_list = filter(lambda a: a != '', [row[3] for row in push_list])
+    if len(push_list) > 0 or len(orphan) > 0 or check_backup:
         print "\n[failed] Remote is not synchonized."
-        exit ( 1 )
+        exit(1)
 
     print "\nRemote is synchonized."
 
 # full check
 elif opt.check and opt.full:
-    _check_encryption_key ()
-    _check_encrypted_dir ()
-    if _sync_dirs    ( BUP_DIR, ENCRYPT_DIR ):
+    _check_encryption_key()
+    _check_encrypted_dir()
+
+    if _sync_dirs(BUP_DIR, ENCRYPT_DIR):
         print "\n[failed] Sync dirs failed."
-        exit ( 1 )
-    push_list,orphan = \
-    _get_diff          ( BUP_DIR, ENCRYPT_DIR )
+        exit(1)
 
-    check_backup = \
-    _check_backup      ( BUP_DIR, ENCRYPT_DIR )
-
-    push_list = filter(lambda a: a != '', [row[3] for row in push_list] )
+    push_list,orphan = _get_diff(BUP_DIR, ENCRYPT_DIR)
+    check_backup = _check_backup(BUP_DIR, ENCRYPT_DIR)
+    push_list = filter(lambda a: a != '', [row[3] for row in push_list])
     if len(push_list) > 0 or len(orphan) > 0 or check_backup:
         print "\n[failed] Remote is not synchonized."
-        exit ( 1 )
+        exit(1)
 
-    if _full_check_backup ( BUP_DIR, ENCRYPT_DIR, KEY ):
+    if _full_check_backup(BUP_DIR, ENCRYPT_DIR, KEY):
         print "\n[failed] Remote is not synchonized."
-        exit ( 1 )
+        exit(1)
 
     print "\nRemote is fully synchonized."
 
 # pull
 elif opt.decrypt:
-    _check_encryption_key ()
-    _check_encrypted_dir ()
-    _check_decrypted_dir ()
-    if _sync_dirs ( ENCRYPT_DIR, DECRYPT_DIR ):
+    _check_encryption_key()
+    _check_encrypted_dir()
+    _check_decrypted_dir()
+
+    if _sync_dirs(ENCRYPT_DIR, DECRYPT_DIR):
         print "\n[failed] Sync dirs failed."
-        exit ( 1 )
-    if _pull_remote ( DECRYPT_DIR, ENCRYPT_DIR, KEY ):
+        exit(1)
+
+    if _pull_remote(DECRYPT_DIR, ENCRYPT_DIR, KEY):
         print "\n[failed] Pull failed."
 
     print "\nRepository decrypted."
 
 # repair
 elif opt.repair:
-    _check_encryption_key ()
-    _check_encrypted_dir ()
-    if _push_remote ( BUP_DIR, ENCRYPT_DIR, KEY, cmp_hash=True):
+    _check_encryption_key()
+    _check_encrypted_dir()
+
+    if _push_remote(BUP_DIR, ENCRYPT_DIR, KEY, cmp_hash=True):
         print "\n[failed] Push failed."
-        exit ( 1 )
-    errors = _full_check_backup ( BUP_DIR, ENCRYPT_DIR, KEY )
-    _full_repair_backup ( BUP_DIR, ENCRYPT_DIR, KEY, errors )
+        exit(1)
+
+    errors = _full_check_backup(BUP_DIR, ENCRYPT_DIR, KEY)
+    if _full_repair_backup(BUP_DIR, ENCRYPT_DIR, KEY, errors):
+        print "\n[failed] Repair failed"
+
+    print "\n Remote repository repaired."
 
 # no command
 else:
-    o.fatal ( "use one of -p, -c, -d, --repair" )
+    o.fatal("use one of -p, -c, -d, --repair")
 
