@@ -22,15 +22,15 @@ from Crypto import Random
 #
 
 optspec = """
-bup encrypt [-pcd --repair] [-k key] [-d decrypt-dir] [-e encrypt-dir] <files ...>
+bup encrypt <-p|-c|-d|--repair> [-f] [-k key] [-d decrypt-dir] [-e encrypt-dir] <paths ...>
 --
 e,encrypt=      path to remote dir
 d,decrypt=      path to local dir
 k,key=          encryption key
 p,push          push to remote directory
 c,check         check remote backup
-f,full          check content instead of modified  (takes a long time)
-repair          repair remote (takes a long time)
+f,full          check content instead of modification time  (takes a longer time)
+repair          repair remote (takes a longer time)
 """
 
 #nokey           without encryption (not implemented
@@ -545,7 +545,7 @@ if opt.push:
         print "\n[failed] Push failed."
         exit(1)
 
-    print "\nPush successfull."
+    print "\nPush successful."
 
 # check
 elif opt.check and not opt.full:
@@ -557,10 +557,10 @@ elif opt.check and not opt.full:
     check_backup = _check_backup(BUP_DIR, ENCRYPT_DIR)
     push_list = filter(lambda a: a != '', [row[3] for row in push_list])
     if len(push_list) > 0 or len(orphan) > 0 or check_backup:
-        print "\n[failed] Remote is not synchonized."
+        print "\n[failed] Remote is not synchronized."
         exit(1)
 
-    print "\nRemote is synchonized."
+    print "\nRemote is synchronized."
 
 # full check
 elif opt.check and opt.full:
@@ -576,14 +576,14 @@ elif opt.check and opt.full:
     check_backup = _check_backup(BUP_DIR, ENCRYPT_DIR)
     push_list = filter(lambda a: a != '', [row[3] for row in push_list])
     if len(push_list) > 0 or len(orphan) > 0 or check_backup:
-        print "\n[failed] Remote is not synchonized."
+        print "\n[failed] Remote is not synchronized."
         exit(1)
 
     if _full_check_backup(BUP_DIR, ENCRYPT_DIR, KEY):
-        print "\n[failed] Remote is not synchonized."
+        print "\n[failed] Remote is not synchronized."
         exit(1)
 
-    print "\nRemote is fully synchonized."
+    print "\nRemote is fully synchronized."
 
 # pull
 elif opt.decrypt:
