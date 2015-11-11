@@ -16,9 +16,9 @@ bup encrypt <-p|-c|-d|--repair> [-f] [-k *key*]
 of the file system. Optionally the destination directory is mounted remotely
 (i.e. googledrive, sshfs, nfs,...).
 
-The key is stored in repository in *encrypt/.key*. If it is not set before 
-running first command *bup encrypt* it is generated automatically from 
-*/dev/urandom*.
+The key is stored in repository in *encrypt/.key*. If it is not set before
+running first command *bup encrypt* it is generated automatically 
+from */dev/urandom*.
 Beware, without the key are encrypted backups completely inaccessible, please 
 copy it to another location for disk failure case. You can change a key but 
 than you must run *bup encrypt --repair* or delete remote backups and 
@@ -53,9 +53,9 @@ repository.
 :   download the remote directory and decrypt it to the *path*.
 
 \--repair
-:   repair remote directory. It calls twice bup with *-cf* -- if dowloads
+:   repair remote directory. It calls twice bup with *-cf* -- it dowloads
     twice whole repository.
-    It encrypts all files from remote and compare them to local repository
+    It decrypts all files from remote and compare them to local repository
     then it pushes corrupted files and check repository ones more.
 
 -f, \--full
@@ -63,15 +63,14 @@ repository.
     see *--push* and *--check*.
 
 -e, \--encrypt=*path*
-:   overwrites remote encrypted directory loaded from *encrypt/.encryptdir*.
+:   overwrites remote encrypted directory loaded from *encrypt/.encryptdir*
+    by *path*.
 
--k, \--key=*32chars key*
-:   overwrites encryption key loaded from *encrypt/.key*. 
-    Length of the key must be 32 characters!
+-k, \--key=*key*
+:   overwrites encryption key loaded from *encrypt/.key* by *key*.
 
 # EXAMPLES
-                            1234567890123456789012345789012
-    $ bup encrypt -p -f -k "the best key Im able to imagine" -e /mnt/google-drive/backups/
+    $ bup encrypt -p -f -k "The Best Key Im Able to Imagine" -e /mnt/google-drive/backups/
     ...
     Push successful.
 
