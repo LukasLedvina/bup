@@ -13,16 +13,18 @@ import time
 from hashlib import md5
 from Crypto.Cipher import AES
 from Crypto import Random
+
 #
 # FIXME
 #   push, pull separate files
 #   push to separate remotes (not only default)
 #   enable ssh
 #   cross files checksum
+#   nokey option
 #
 
 optspec = """
-bup encrypt <-p|-c|-d|--repair> [-f] [-k key] [-d decrypt-dir] [-e encrypt-dir] <paths ...>
+bup encrypt <-p|-c|-d|--repair> [-f] [-k key] [-d decrypt-dir] [-e encrypt-dir]
 --
 e,encrypt=      path to remote dir
 d,decrypt=      path to local dir
@@ -347,10 +349,11 @@ def _get_file_list(nullextra):
     cwd = os.getcwd()
     file_list = []
     _extra = []
-    if not extra:
-        _extra.append(nullextra)
-    else:
-        _extra = extra
+#    if not extra:
+#        _extra.append(nullextra)
+#    else:
+#        _extra = extra
+    _extra.append(nullextra)
  
     for fextra in _extra:
         if not os.path.exists(fextra):

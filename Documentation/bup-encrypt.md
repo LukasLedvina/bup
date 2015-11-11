@@ -1,14 +1,14 @@
 % bup-encrypt(1) Bup %BUP_VERSION%
-% Lukáš Ledvina <lukasledvina@gmail.com>
+% Lukáš Ledvina <lukas.ledvina@gmail.com>
 % %BUP_DATE%
 
 # NAME
 
-bup-encrypt - encrypt a bup repository (file by file) with (openssl aes-256-cbc -salt)
+bup-encrypt - encrypt file by file a bup repository compatible with (openssl aes-256-cbc -salt)
 
 # SYNOPSIS
-bup encrypt <-p|-c|-d|--repair> [-f] [-k *key*] 
-[-d *decrypt-dir*] [-e *encrypt-dir*] \<paths ...\>;
+bup encrypt <-p|-c|-d *decrypt-dir*|--repair> [-f] [-k *key*] 
+[-e *encrypt-dir*]
 
 # DESCRIPTION
 
@@ -30,7 +30,7 @@ be set by *-e* flag.
 Subdirectory encrypt is not pushed to remote because of security reasons.
 
 Files which might be modified or deleted in remote directory are moved 
-to *deleted* subdirectory (in remote dir only), timestamp to their name 
+to *deleted* subdirectory (in remote dir only), a timestamp to their name 
 is added.
 
 By default are pushed, checked, decrypted or repaired all files in the 
