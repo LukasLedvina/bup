@@ -16,7 +16,7 @@ from Crypto import Random
 
 #
 # FIXME
-#   push, pull separate files
+#   push, pull single files
 #   push to separate remotes (not only default)
 #   enable ssh
 #   cross files checksum
@@ -53,10 +53,8 @@ def _sync_dirs(_dir, _dest):
     ret2 = os.system(cmd)
     if ret1 == 0 and ret2 == 0:
         print "[OK]"
-    else:
-        print "[failed] " + str(ret)
-        exit(1)
-    return 0
+        return 0
+    return 1
 
 def _get_diff(
         _dir,
@@ -139,7 +137,7 @@ def _send_remote(_dir, _dest, push_list, key, hash_name="default"):
     _dir       local backup
     _dest      remote encrypted dir
      push_list list of files to be sent
-    key        encryption key 32 characters
+    key        encryption key
     hash_name  hash-list name for multiple remotes
     """
     print "Pushing to", _dest,
@@ -201,7 +199,7 @@ def _push_remote(_dir, _dest, key, cmp_hash=False):
     _dir       local backup
     _dest      remote encrypted dir
     puch_list  list of files to be pushed 
-    key        encryption key 32 characters
+    key        encryption key 
     hash_name  hash-list name for multiple remotes
     cmp_hash   compare local files by hash intead of modified
     """
@@ -261,7 +259,7 @@ def _full_check_backup(_dir, _dest, key, one_file=False):
     """Decrypt remote and compare with local
     _dir       local backup
     _dest      remote encrypted dir
-    key        encryption key 32 characters
+    key        encryption key 
     """
     if not one_file:
         print "Checking  backup deeply "+_dest
@@ -286,9 +284,7 @@ def _full_check_backup(_dir, _dest, key, one_file=False):
         if not match:
             errors.append(loc_file_name)
             print "\r  [not match]",loc_file_name.replace(_dir, "./")
-    if len(errors) > 0:
-        print "\r[failed]"
-    else:
+    if len(errors) == 0:
         print "\r[OK]"
     return errors
 
@@ -296,7 +292,7 @@ def _full_repair_backup(_dir, _dest, key , errors):
     """Repair remote backup
     _dir       local backup
     _dest      remote encrypted dir
-    key        encryption key 32 characters
+    key        encryption key 
     """
     print "Full repair backup "+_dest,
     total = len(errors)
@@ -323,7 +319,7 @@ def _pull_remote(_dir, _dest, key):
     """Decrypt remote and save it in local
     _dir       local dir for decryption
     _dest      remote encrypted dir
-    key        encryption key 32 characters
+    key        encryption key 
     """
     print "Recovering from "+_dest
     list_files = _get_remote_file_list(_dest)
@@ -458,7 +454,7 @@ def _check_key_changed(_dir, _dest, key):
     """Check if is not changed from last backup
     _dir       local dir for decryption
     _dest      remote encrypted dir
-    key        encryption key 32 characters
+    key        encryption key 
     """
     print "Checking encryption key"
     if not _full_check_backup(_dir, _dest, key, one_file=True):
