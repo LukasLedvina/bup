@@ -398,9 +398,10 @@ def _check_encryption_key():
         if not os.path.exists(keyfilename):
             dirname  = os.path.dirname(keyfilename)
             if not os.path.exists(dirname):
-                os.makedirs(dirname) 
+                os.makedirs(dirname)
+            # 1kb key
             print "Generating key in "+keyfilename
-            cmd = "dd if=/dev/urandom of=" + keyfilename + " bs=1 count=32"
+            cmd = "dd if=/dev/urandom of=" + keyfilename + " bs=1 count=128"
             print "Key gen command:", cmd
             os.system(cmd + ">/dev/null 2>&1")
         keyfile = open(keyfilename, "r")
@@ -463,8 +464,9 @@ def _check_key_changed(_dir, _dest, key):
     print "\r[OK]"
 
 ###########################################################
-# help functions for necryption 
+# help functions for encryption 
 # http://stackoverflow.com/questions/16761458/how-to-aes-encrypt-decrypt-files-using-python-pycrypto-in-an-openssl-compatible
+# compatible with `openssl aes-256-cbc -salt`
 ###########################################################
 def derive_key_and_iv(password, salt, key_length, iv_length):
     d = d_i = ''
@@ -483,7 +485,7 @@ def encrypt(in_file, out_file, password, key_length=32):
     while not finished:
         chunk = in_file.read(1024 * bs)
         if len(chunk) == 0 or len(chunk) % bs != 0:
-            padding_length = (bs - len(chunk) % bs) or bs
+            padding_length = bs - (len(chunk) % bs)
             chunk += padding_length * chr(padding_length)
             finished = True
         out_file.write(cipher.encrypt(chunk))
@@ -499,11 +501,19 @@ def decrypt(in_file, out_file, password, key_length=32):
         chunk, next_chunk = next_chunk, cipher.decrypt(in_file.read(1024 * bs))
         if len(next_chunk) == 0:
             padding_length = ord(chunk[-1])
+            if padding_length < 1 or padding_length > bs:
+                raise ValueError("bad decrypt pad (%d)" % padding_length)
+            # all the pad-bytes must be the same
+            if chunk[-padding_length:] != (padding_length * chr(padding_length)):
+                # this is similar to the bad decrypt:evp_enc.c from openssl program
+                raise ValueError("bad decrypt")
             chunk = chunk[:-padding_length]
             finished = True
         out_file.write(chunk)
 
 def _get_hash(filepath):
+    """Returns a SHA1 hash of given file
+    """
     sha1 = hashlib.sha1()
     f = open(filepath, 'rb')
     try:
