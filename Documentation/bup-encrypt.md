@@ -4,7 +4,7 @@
 
 # NAME
 
-bup-encrypt - encrypt a bup repository
+bup-encrypt - encrypt a bup repository (file by file) with (openssl aes-256-cbc -salt)
 
 # SYNOPSIS
 bup encrypt <-p|-c|-d|--repair> [-f] [-k *key*] 
@@ -16,9 +16,9 @@ bup encrypt <-p|-c|-d|--repair> [-f] [-k *key*]
 of the file system. Optionally the destination directory is mounted remotely
 (i.e. googledrive, sshfs, nfs,...).
 
-The key is stored in repository in *encrypt/.key*. It should be 32 characters 
-long. If it is not set before running first command *bup encrypt* it is 
-generated automatically from */dev/urandom*.
+The key is stored in repository in *encrypt/.key*. If it is not set before 
+running first command *bup encrypt* it is generated automatically from 
+*/dev/urandom*.
 Beware, without the key are encrypted backups completely inaccessible, please 
 copy it to another location for disk failure case. You can change a key but 
 than you must run *bup encrypt --repair* or delete remote backups and 
