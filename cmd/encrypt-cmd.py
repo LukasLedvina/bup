@@ -33,6 +33,7 @@ p,push          push to remote directory
 c,check         check remote backup
 f,full          check content instead of modification time  (takes a longer time)
 repair          repair remote (takes a longer time)
+limit=          max amount of data to be pushed in MB
 """
 
 #nokey           without encryption (not implemented
@@ -134,7 +135,7 @@ def _get_diff(
     print "\r[OK]"
     return push_list, orphan
 
-def _send_remote(_dir, _dest, push_list, key, hash_name="default"):
+def _send_remote(_dir, _dest, push_list, key, hash_name="default", limit=None):
     """Encrypt and copy it to remote dir
     _dir       local backup
     _dest      remote encrypted dir
@@ -142,12 +143,12 @@ def _send_remote(_dir, _dest, push_list, key, hash_name="default"):
     key        encryption key
     hash_name  hash-list name for multiple remotes
     """
-    print "Pushing to", _dest,
+    print "Pushing to", _dest, "limit =",limit,"MB",
 # create new hash-file, backup old one
-    hash_list = "encrypt/"+hash_name+".sha1"
+    hash_list = "encrypt/" + hash_name + ".sha1"
     filename = _dir + "/" + hash_list
     if os.path.exists(filename):
-        copyfile(filename, filename+".old")
+        copyfile(filename, filename + ".old")
     hash_file = open(filename, 'w')
 # prepare list of files to push
     push_files = []
@@ -162,7 +163,12 @@ def _send_remote(_dir, _dest, push_list, key, hash_name="default"):
     total = len(push_files)
     print "\t",total,"files to push"
 # encrypt and push
+    tot_size = 0
     for in_filename in push_files:
+        tot_size += os.path.getsize(in_filename)
+        if not limit == None and  tot_size > 1e6*limit:
+            print "\n[failed] Quota exceeded."
+            exit(1)
         print "\r(" + str(push_files.index(in_filename) + 1) + \
               "/" + str(total) + ")", in_filename,
         out_filename = in_filename.replace(_dir, _dest)
@@ -204,7 +210,7 @@ def _clean_remote(_dest, orphan):
     print "\r[OK]"
     return 0
 
-def _push_remote(_dir, _dest, key, cmp_hash=False):
+def _push_remote(_dir, _dest, key, cmp_hash=False, limit=None):
     """Push and encrypt backup
     _dir       local backup
     _dest      remote encrypted dir
@@ -226,7 +232,7 @@ def _push_remote(_dir, _dest, key, cmp_hash=False):
         if filter(lambda a: a != '', [row[3] for row in push_list]):
             _break = False
 
-        if _send_remote(_dir, _dest, push_list , key):
+        if _send_remote(_dir, _dest, push_list , key, limit=limit):
             print "\n[failed] Send to remote failed."
             exit(1)
 
@@ -583,7 +589,7 @@ if opt.push:
     _check_encrypted_dir()
     _check_key_changed(BUP_DIR, KEY)
 
-    if _push_remote(BUP_DIR, ENCRYPT_DIR, KEY, opt.full):
+    if _push_remote(BUP_DIR, ENCRYPT_DIR, KEY, opt.full, limit=opt.limit):
         print "\n[failed] Push failed."
         exit(1)
 
@@ -654,7 +660,7 @@ elif opt.repair:
 
     errors = _full_check_backup(BUP_DIR, ENCRYPT_DIR, KEY)
     if _full_repair_backup(BUP_DIR, ENCRYPT_DIR, KEY, errors):
-        print "\n[failed] Repair failed"
+        print "\n[failed] Repair failed."
         exit(1)
 
     print "\nRemote repository repaired."
