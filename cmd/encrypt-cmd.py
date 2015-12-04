@@ -34,6 +34,8 @@ c,check         check remote backup
 f,full          check content instead of modification time  (takes a longer time)
 repair          repair remote (takes a longer time)
 limit=          max amount of data to be pushed in MB
+nosync          skip directory synchonize
+nodelete        skip remote cleaning
 """
 
 #nokey           without encryption (not implemented
@@ -47,14 +49,65 @@ def _sync_dirs(_dir, _dest):
     _dir   local backup
     _dest  remote encrypted backup
     """
+    global opt
     print "Synchonizing dirs"
-    cmd = 'rsync -qa -f"+ */" -f"- *" '+_dir+" "+_dest
-    ret1 = os.system(cmd)
-    cmd = 'rsync -qa -f"+ */" -f"- *" '+_dir+" "+_dest+"/deleted"
-    ret2 = os.system(cmd)
-    if ret1 == 0 and ret2 == 0:
-        print "[OK]"
+    if opt.nosync:
+        print "\r[skipped]"
+        sys.stdout.flush()
         return 0
+    sys.stdout.flush()
+    total = 0
+    for path, dirs, files in os.walk(_dir):
+        total += len(dirs)
+
+    while True:
+        index = 0
+        _break = True
+        create = []
+        for path, dirs, files in os.walk(_dir):
+            for d in dirs:
+                f_dir = path + "/" + d
+                f_dir = f_dir.replace(_dir,"")
+                index += 1
+                print "\rchecking (" + str(index) + "/" + \
+                        str(total) + ") " + \
+                        f_dir,
+                sys.stdout.flush()
+                try:
+                    os.stat(_dest + "/" + f_dir)
+                except:
+                    _break = False
+                    create.append(_dest + "/" + f_dir)
+                try:
+                    os.stat(_dest + "/deleted/" + f_dir)
+                except:
+                    _break = False
+                    create.append(_dest + "/deleted/" + f_dir)
+        if _break:
+            break
+
+        os.system("mkdir " + _dest + "/deleted")
+        index = 0
+        for d in create:
+            index += 1
+            print "\rcreating (" + str(index) + "/" + \
+                    str(len(create)) + ") " + \
+                        d,
+            sys.stdout.flush()
+            os.system("mkdir " + d)
+#                os.mkdir(_dest + "/" + f_dir)
+#                os.mkdir(_dest + "/deleted/" + f_dir)
+
+    print "\r[OK]"
+    sys.stdout.flush()
+    return 0
+#    cmd = 'rsync -qa -f"+ */" -f"- *" '+_dir+" "+_dest
+#    ret1 = os.system(cmd)
+#    cmd = 'rsync -qa -f"+ */" -f"- *" '+_dir+" "+_dest+"/deleted"
+#    ret2 = os.system(cmd)
+#    if ret1 == 0 and ret2 == 0:
+#        print "[OK]"
+#        return 0
     return 1
 
 def _get_diff(
@@ -70,7 +123,9 @@ def _get_diff(
     cmp_hash   compare files using hash
     hash_name  hash-list name for multiple remotes (not implemented yet)
     """
+    global opt
     print "Calculating diff"
+    sys.stdout.flush()
     hash_list = "encrypt/" + hash_name + ".sha1"
     filename =  _dir + "/" + hash_list
     dirname = os.path.dirname(filename)
@@ -92,13 +147,18 @@ def _get_diff(
 # find changes in repository
     list_files = _get_local_file_list(_dir)
     hash_list_files = [row[2] for row in hash_list]
+    total = len(list_files)
+    index = 0
     for file_path in list_files:
         file_path_r = file_path.replace(_dir, "./").replace("//", "/")
         file_hash = "0"
         file_modified = int(float(os.path.getmtime(file_path)))
         if cmp_hash:
             file_hash = _get_hash(file_path)
-        print "\r"+file_path_r,
+        print "\r(" + str(index + 1) + \
+                "/" + str(total) + ") ", file_path_r,
+        sys.stdout.flush()
+        index += 1
         try:
             index = hash_list_files.index(file_path_r)
             if (cmp_hash and hash_list[index][0] == file_hash)\
@@ -108,31 +168,38 @@ def _get_diff(
                     push_list.append([file_hash, file_modified, file_path_r, ""])
                     continue
                 else:
-                    file_hash = _get_hash(file_path)
+                    file_hash = ""
                     push_list.append([file_hash, file_modified, file_path_r, file_path])
-                    print "\r  [missing]",
+                    print "\r  [missing] ",
+                    sys.stdout.flush()
             else:
-                file_hash = _get_hash(file_path)
+                file_hash = ""
                 push_list.append([file_hash, file_modified, file_path_r, file_path])
                 hash_list.pop(index)
                 hash_list_files.pop(index)
                 print "\r  [modified]",
+                sys.stdout.flush()
         except ValueError:
-            file_hash = _get_hash(file_path)
+            file_hash = ""
             push_list.append([file_hash, file_modified, file_path_r, file_path])
             print "\r  [new file]",
+            sys.stdout.flush()
         print file_path_r
+        sys.stdout.flush()
 
 # find unuseful files at remote
     orphan = []
-    list_files = _get_remote_file_list(_dest)
-    for file_path in list_files:
-        file_name = file_path.replace(_dest, _dir)
-        if not os.path.isfile(file_name):
-            orphan.append(file_path)
-            print "\r  [deleted]  " + file_path.replace(_dest, ".")
+    if not opt.nodelete:
+        list_files = _get_remote_file_list(_dest)
+        for file_path in list_files:
+            file_name = file_path.replace(_dest, _dir)
+            if not os.path.isfile(file_name):
+                orphan.append(file_path)
+                print "\r  [deleted]  " + file_path.replace(_dest, ".")
+                sys.stdout.flush()
 
     print "\r[OK]"
+    sys.stdout.flush()
     return push_list, orphan
 
 def _send_remote(_dir, _dest, push_list, key, hash_name="default", limit=None):
@@ -144,6 +211,7 @@ def _send_remote(_dir, _dest, push_list, key, hash_name="default", limit=None):
     hash_name  hash-list name for multiple remotes
     """
     print "Pushing to", _dest, "limit =",limit,"MB",
+    sys.stdout.flush()
 # create new hash-file, backup old one
     hash_list = "encrypt/" + hash_name + ".sha1"
     filename = _dir + "/" + hash_list
@@ -156,41 +224,60 @@ def _send_remote(_dir, _dest, push_list, key, hash_name="default", limit=None):
         if not file_path == "":
             push_files.append(file_path)
         else:
+            if file_hash == "":
+                file_hash = _get_hash(file_path)
             hash_file.write(file_hash + " " + \
                     str(file_modified) + " " + \
                     file_path_r + "\n")
 
     total = len(push_files)
     print "\t",total,"files to push"
+    sys.stdout.flush()
 # encrypt and push
     tot_size = 0
     for in_filename in push_files:
-        tot_size += os.path.getsize(in_filename)
-        if not limit == None and  tot_size > 1e6*limit:
+        act_size  = os.path.getsize(in_filename)
+        tot_size += act_size;
+        if not limit == None and  tot_size > 1e6 * limit:
             print "\n[failed] Quota exceeded."
             exit(1)
         print "\r(" + str(push_files.index(in_filename) + 1) + \
-              "/" + str(total) + ")", in_filename,
+              "/" + str(total) + ")", in_filename, \
+              "(" + str(act_size/1e6) + "/" + str(tot_size/1e6) + " MB)",
+        sys.stdout.flush()
         out_filename = in_filename.replace(_dir, _dest)
         # backup remote file instead of delete
-        if os.path.exists(out_filename):
-            newfile = out_filename.replace(_dest, _dest+"deleted/")
+        try:
+            newfile = out_filename.replace(_dest, _dest + "deleted/")
             newfile += "." + datetime.datetime.now().strftime('%Y%m%d-%H%M%S')
             move(out_filename, newfile)
+            print "file",out_file,"moved to",newfile
+        except IOError:
+            pass
+        enc_filename = _dir + "/encrypt/enc.tmp"
         in_file  = open(in_filename, 'rb')
-        out_file = open(out_filename, 'wb')
-        encrypt(in_file, out_file, KEY)
+        enc_file = open(enc_filename, 'wb')
+        #encrypt(in_file, out_file, KEY)
+        encrypt(in_file,enc_file, KEY)
         in_file.close()
-        out_file.close()
+        enc_file.close()
+#        move(enc_filename, out_filename)
+        os.system("dd if="+enc_filename+" of="+out_filename+" bs=10M > /dev/null 2>&1")
         index = [row[3] for row in push_list].index(in_filename)
         file_hash = push_list[index][0]
         file_modified = push_list[index][1]
         file_path_r = push_list[index][2]
+        file_path = push_list[index][3]
+        if file_hash == "":
+            file_hash = _get_hash(file_path)
         hash_file.write(file_hash + " " + \
                 str(file_modified) + " " + \
                 file_path_r + "\n")
+        hash_file.flush()
+        os.fsync(hash_file)
     hash_file.close()
     print "\r[OK]"
+    sys.stdout.flush()
     return 0
 
 def _clean_remote(_dest, orphan):
@@ -199,15 +286,20 @@ def _clean_remote(_dest, orphan):
     orphan  list of files living only at remote
     """
     print "Cleaning  ", _dest,
+    sys.stdout.flush()
     total = len(orphan)
     print "\t",total,"files to delete"
+    sys.stdout.flush()
     for fname in orphan:
         print "\r(" + str(orphan.index(fname) + 1) + \
                 "/" + str(total) + ")", fname,
+        sys.stdout.flush()
         newfile = fname.replace(_dest, _dest+"deleted/")
         newfile += "." + datetime.datetime.now().strftime('%Y%m%d-%H%M%S')
         move(fname, newfile)
+        print "file",fname,"moved to",newfile
     print "\r[OK]"
+    sys.stdout.flush()
     return 0
 
 def _push_remote(_dir, _dest, key, cmp_hash=False, limit=None):
@@ -255,6 +347,7 @@ def _check_backup(_dir,_dest):
     _dest      remote encrypted backup
     """
     print "Checking backup"
+    sys.stdout.flush()
     orphan = []
     list_files = _get_local_file_list(_dir)
     total = len(list_files)
@@ -262,11 +355,19 @@ def _check_backup(_dir,_dest):
         print "\r(" + str(list_files.index(file_name) + 1) + "/" + \
                 str(total) + ") " + \
                 file_name.replace(_dest, "./"),
+        sys.stdout.flush()
         dest_file_name = file_name.replace(_dir, _dest)
         if not os.path.isfile(dest_file_name):
             orphan.append(file_name)
             print "\r  [not send]", file_name.replace(_dir, ".")
+            sys.stdout.flush()
+        if os.path.getsize(file_name) > os.path.getsize(dest_file_name):
+            os.remove(dest_file_name)
+            orphan.append(file_name)
+            print "\r  [small size]", file_name.replace(_dir, ".")
+            sys.stdout.flush()
     print "\r[OK]"
+    sys.stdout.flush()
     if len(orphan) == 0:
         return 0
     return 1
@@ -286,6 +387,7 @@ def _full_check_backup(_dir, _dest, key):
         print "\r(" + str(list_files.index(file_name) + 1) + "/" + \
                 str(total) + ") " + \
                 file_name.replace(_dest, "./"),
+        sys.stdout.flush()
         loc_file_name = file_name.replace(_dest,_dir)
         try:
             in_file  = open(file_name , 'rb')
@@ -300,8 +402,10 @@ def _full_check_backup(_dir, _dest, key):
         if not match:
             errors.append(loc_file_name)
             print "\r  [not match]",loc_file_name.replace(_dir, "./")
+            sys.stdout.flush()
     if len(errors) == 0:
         print "\r[OK]"
+        sys.stdout.flush()
     return errors
 
 def _full_repair_backup(_dir, _dest, key , errors):
@@ -311,23 +415,29 @@ def _full_repair_backup(_dir, _dest, key , errors):
     key        encryption key 
     """
     print "Full repair backup "+_dest,
+    sys.stdout.flush()
     total = len(errors)
     print "\t",total,"files to repair"
+    sys.stdout.flush()
     for f in errors:
         print "\r(" + str(errors.index(f) + 1) + "/" + \
                 str(total) + ") " + \
                 f.replace(_dest, "./"),
+        sys.stdout.flush()
         fname   = f.replace(_dir, _dest)
         newfile = fname.replace(_dest, _dest+"deleted/")
         newfile += "." + datetime.datetime.now().strftime('%Y%m%d-%H%M%S')
         move(fname, newfile)
     print "\r[OK]"
+    sys.stdout.flush()
     if not total == 0:
         if _push_remote(_dir, _dest, key):
             print "\n[failed] Push failed."
+            sys.stdout.flush()
             return 1
     if len(_full_check_backup(_dir, _dest, key)):
         print "\n[failed] Deep check failed."
+        sys.stdout.flush()
         return 1
     return 0
 
@@ -338,12 +448,14 @@ def _pull_remote(_dir, _dest, key):
     key        encryption key 
     """
     print "Recovering from "+_dest
+    sys.stdout.flush()
     list_files = _get_remote_file_list(_dest)
     total = len(list_files)
     for file_name in list_files:
         print "\r(" + str(list_files.index(file_name) + 1) + "/" + \
                 str(total) + ") " + \
                 file_name.replace(_dest, "./"),
+        sys.stdout.flush()
         in_filename = file_name
         out_filename = in_filename.replace(_dest, _dir)
         try:
@@ -354,8 +466,10 @@ def _pull_remote(_dir, _dest, key):
             out_file.close()
         except ValueError:
             print "\n[failed] Decryption failed."
+            sys.stdout.flush()
             return 1
     print "\r[OK]"
+    sys.stdout.flush()
     return 0
 
 def _get_file_list(nullextra):
@@ -381,9 +495,13 @@ def _get_file_list(nullextra):
         if os.path.isdir(fextra):
             for path, dirs, files in os.walk(fextra):
                 for f in files:
+                    print "\r reading tree ", f,
+                    sys.stdout.flush()
                     file_list.append(path + "/" + f)
         else:
             file_list.append(fextra)
+    print "\r",
+    sys.stdout.flush()
     return file_list
 
 def _get_remote_file_list(_dest):
@@ -420,13 +538,16 @@ def _check_encryption_key():
                 os.makedirs(dirname)
             # 1kb key
             print "Generating key in "+keyfilename
+            sys.stdout.flush()
             cmd = "dd if=/dev/urandom of=" + keyfilename + " bs=1 count=128"
             print "Key gen command:", cmd
+            sys.stdout.flush()
             os.system(cmd + ">/dev/null 2>&1")
         keyfile = open(keyfilename, "r")
         KEY = keyfile.read(32)
         keyfile.close()
         print "Using key-file    \t", keyfilename
+        sys.stdout.flush()
 
 def _check_encrypted_dir():
     """Check if encrypted dir is set
@@ -469,6 +590,7 @@ def _check_decrypted_dir():
         print "Decrypt path does not exist:",DECRYPT_DIR
         exit(1)
     print "Using decryption dir\t", DECRYPT_DIR
+    sys.stdout.flush()
 
 def _check_key_changed(_dir, key, update_only=False):
     """Check if is not changed from last backup
@@ -476,6 +598,7 @@ def _check_key_changed(_dir, key, update_only=False):
     key        encryption key 
     """
     print "Checking encryption key"
+    sys.stdout.flush()
     keyfile = _dir + "encrypt/.key"
     if update_only:
         os.remove(keyfile + ".enc")
@@ -500,6 +623,7 @@ def _check_key_changed(_dir, key, update_only=False):
         print "\n[failed] Key changed! Run `bup encrypt --repair`."
         exit(1)
     print "\r[OK]"
+    sys.stdout.flush()
 
 ###########################################################
 # help functions for encryption 
@@ -555,7 +679,17 @@ def _get_hash(filepath):
     sha1 = hashlib.sha1()
     f = open(filepath, 'rb')
     try:
-        sha1.update(f.read())
+        BUF_SIZE = 65536
+        while True:
+            data = f.read(BUF_SIZE)
+            if not data:
+                break
+            sha1.update(data)
+#        sha1.update(f.read(())
+    except MemoryError:
+        print filepath
+        print "[failed] Menory error."
+        exit(1)
     finally:
         f.close()
     return sha1.hexdigest()
@@ -571,7 +705,7 @@ o = options.Options(optspec)
 BUP_DIR = os.environ['BUP_DIR']
 BUP_DIR = (BUP_DIR+"/").replace("//","/");
 
-git.check_repo_or_die()
+#git.check_repo_or_die()
 
 # load options
 for (option, parameter) in flags:
