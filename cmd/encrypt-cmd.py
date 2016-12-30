@@ -86,7 +86,7 @@ def _sync_dirs(_dir, _dest):
         if _break:
             break
 
-        os.system("mkdir " + _dest + "/deleted")
+        os.system("mkdir -p " + _dest + "/deleted")
         index = 0
         for d in create:
             index += 1
@@ -248,12 +248,21 @@ def _send_remote(_dir, _dest, push_list, key, hash_name="default", limit=None):
         out_filename = in_filename.replace(_dir, _dest)
         # backup remote file instead of delete
         try:
+            date = "." + datetime.datetime.now().strftime('%Y%m%d-%H%M%S')
             newfile = out_filename.replace(_dest, _dest + "deleted/")
-            newfile += "." + datetime.datetime.now().strftime('%Y%m%d-%H%M%S')
-            move(out_filename, newfile)
-            print "file",out_file,"moved to",newfile
-        except IOError:
+            os.rename(out_filename, out_filename + date)
+            move(out_filename + date, newfile + date)
+#            print "file",out_file,"moved to",newfile
+        except (IOError, OSError):
             pass
+        index = [row[3] for row in push_list].index(in_filename)
+        file_hash = push_list[index][0]
+        file_modified = push_list[index][1]
+        file_path_r = push_list[index][2]
+        file_path = push_list[index][3]
+        if file_hash == "":
+            file_hash = _get_hash(file_path)
+
         enc_filename = _dir + "/encrypt/enc.tmp"
         in_file  = open(in_filename, 'rb')
         enc_file = open(enc_filename, 'wb')
@@ -262,14 +271,7 @@ def _send_remote(_dir, _dest, push_list, key, hash_name="default", limit=None):
         in_file.close()
         enc_file.close()
 #        move(enc_filename, out_filename)
-        os.system("dd if="+enc_filename+" of="+out_filename+" bs=10M > /dev/null 2>&1")
-        index = [row[3] for row in push_list].index(in_filename)
-        file_hash = push_list[index][0]
-        file_modified = push_list[index][1]
-        file_path_r = push_list[index][2]
-        file_path = push_list[index][3]
-        if file_hash == "":
-            file_hash = _get_hash(file_path)
+        os.system("dd if=" + enc_filename + " of=" + out_filename + " bs=10M > /dev/null 2>&1")
         hash_file.write(file_hash + " " + \
                 str(file_modified) + " " + \
                 file_path_r + "\n")
@@ -294,10 +296,11 @@ def _clean_remote(_dest, orphan):
         print "\r(" + str(orphan.index(fname) + 1) + \
                 "/" + str(total) + ")", fname,
         sys.stdout.flush()
-        newfile = fname.replace(_dest, _dest+"deleted/")
-        newfile += "." + datetime.datetime.now().strftime('%Y%m%d-%H%M%S')
-        move(fname, newfile)
-        print "file",fname,"moved to",newfile
+        date = "." + datetime.datetime.now().strftime('%Y%m%d-%H%M%S')
+        newfile = fname.replace(_dest, _dest + "deleted/")
+        os.rename(fname, fname + date)
+        move(fname + date, newfile + date)
+#        print "file",fname,"moved to",newfile
     print "\r[OK]"
     sys.stdout.flush()
     return 0
@@ -426,8 +429,9 @@ def _full_repair_backup(_dir, _dest, key , errors):
         sys.stdout.flush()
         fname   = f.replace(_dir, _dest)
         newfile = fname.replace(_dest, _dest+"deleted/")
-        newfile += "." + datetime.datetime.now().strftime('%Y%m%d-%H%M%S')
-        move(fname, newfile)
+        date = "." + datetime.datetime.now().strftime('%Y%m%d-%H%M%S')
+        os.rename(fname, fname + date)
+        move(fname + date, newfile + date)
     print "\r[OK]"
     sys.stdout.flush()
     if not total == 0:
